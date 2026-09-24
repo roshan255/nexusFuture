@@ -4,10 +4,22 @@ from .models import SymbolRules, Protection
 class TradeSizeError(ValueError):
     """The configured margin cannot satisfy a selected contract's exchange rules."""
 
+
+class LeverageUnavailable(ValueError):
+    """The configured leverage cannot be applied to a symbol."""
+
 def selected_margin(mode: str, fixed_usdt: float, percent: float, available_usdt: float) -> float:
     if mode == "FIXED": return fixed_usdt
     if mode == "PERCENT": return available_usdt * percent / 100
     raise ValueError("Margin mode must be FIXED or PERCENT")
+
+
+def resolve_leverage(requested: int, supported: int, fallback: str) -> int:
+    if requested <= supported:
+        return requested
+    if fallback == "USE_MAX":
+        return supported
+    raise LeverageUnavailable(f"requested leverage {requested}x exceeds Binance maximum {supported}x")
 def floor_to(value: float, increment: float) -> float:
     return float((Decimal(str(value))/Decimal(str(increment))).to_integral_value(rounding=ROUND_DOWN)*Decimal(str(increment)))
 

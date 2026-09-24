@@ -39,3 +39,8 @@ class PositionService:
     def cancel_protection(self, symbol: str) -> None:
         for order in self.client.open_algo_orders(symbol):
             self.client.cancel_algo(symbol, str(order["algoId"]))
+
+    def protection_missing(self, symbol: str) -> bool:
+        orders = self.client.open_algo_orders(symbol)
+        order_types = {order.get("orderType", order.get("type")) for order in orders}
+        return not {"TAKE_PROFIT_MARKET", "STOP_MARKET"}.issubset(order_types)
