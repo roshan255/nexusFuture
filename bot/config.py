@@ -20,6 +20,7 @@ class Settings:
     uat_base_url: str = "https://demo-fapi.binance.com"
     log_level: str = "INFO"
     scan_interval_seconds: int = 60
+    reverse_signal_direction: bool = False
     target_mode: str = "SMALL"
     target_percent: float = 1.5
     stop_loss_percent: float = 1.0
@@ -89,7 +90,7 @@ def load_settings() -> Settings:
     target = float(read("TARGET_PERCENT", read("TAKE_PROFIT_PERCENT", "1.5")))
     settings = Settings(
         mode=mode, api_key=read("BINANCE_API_KEY"), api_secret=read("BINANCE_API_SECRET"), uat_base_url=read("UAT_BASE_URL", "https://demo-fapi.binance.com"), log_level=read("LOG_LEVEL", "INFO").upper(),
-        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")), target_mode=target_mode, target_percent=target, stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")), leverage=int(read("LEVERAGE", "5")), leverage_fallback=fallback,
+        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")), reverse_signal_direction=_bool(read("REVERSE_SIGNAL_DIRECTION", "false")), target_mode=target_mode, target_percent=target, stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")), leverage=int(read("LEVERAGE", "5")), leverage_fallback=fallback,
         margin_mode=margin_mode, margin_per_trade_usdt=float(read("MARGIN_PER_TRADE_USDT", "10")), margin_percent=float(read("MARGIN_PERCENT", "100")), large_limit_offset_percent=float(read("LARGE_LIMIT_OFFSET_PERCENT", "0.25")), large_limit_expiry_minutes=int(read("LARGE_LIMIT_EXPIRY_MINUTES", "240")),
         large_trailing_enabled=_bool(read("LARGE_TRAILING_ENABLED", "false")), trailing_callback_percent=float(read("TRAILING_CALLBACK_PERCENT", "1")), trailing_activation_percent=float(read("TRAILING_ACTIVATION_PERCENT", "5")),
         min_score=float(read("MIN_SCORE", "70")), min_direction_gap=float(read("MIN_DIRECTION_GAP", "8")), min_24h_abs_change_percent=float(read("MIN_24H_ABS_CHANGE_PERCENT", "3")), min_short_term_move_percent=float(read("MIN_SHORT_TERM_MOVE_PERCENT", "0.25")),

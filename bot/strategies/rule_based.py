@@ -100,4 +100,7 @@ class RuleBasedStrategy(Strategy):
         direction_gap = abs(best.breakdown["long_score"] - best.breakdown["short_score"])
         if best.score < self.settings.min_score or direction_gap < self.settings.min_direction_gap:
             best.direction = "WAIT"
+        elif self.settings.reverse_signal_direction:
+            best.direction = "SHORT" if best.direction == "LONG" else "LONG"
+            best.reasons.append("reverse_signal_direction=true")
         return best, candidates

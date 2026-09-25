@@ -29,6 +29,8 @@ Run `python -m bot.main --backtest-symbol BTCUSDT` before trusting a configurati
 
 Copy `.env.example` to `.env` and tune the documented groups there: target/stop and mode; leverage/sizing; liquidity, volatility and signal thresholds; cooldown and daily-entry caps; target-first backtest window; optional news modifier; and per-signal weights. Set any `WEIGHT_*` value to `0` to disable that signal.
 
+Set `REVERSE_SIGNAL_DIRECTION=true` only to reverse an actionable decision (`LONG` becomes `SHORT`, and vice versa); `WAIT` remains `WAIT`.
+
 `ANALYSIS_WORKERS=4` keeps up to four independent public-data symbol analyses in flight. Increase it only cautiously; Binance still applies request-weight limits.
 
 `LEVERAGE_FALLBACK=USE_MAX` automatically falls back to the exchange maximum for the selected symbol. `LEVERAGE_FALLBACK=SKIP` emits a safe wait decision instead.
