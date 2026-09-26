@@ -45,6 +45,10 @@ class Settings:
     min_adx: float = 18.0
     max_spread_percent: float = 0.12
     breakout_lookback: int = 20
+    support_resistance_lookback: int = 48
+    support_resistance_zone_atr: float = 0.75
+    breakout_confirm_atr: float = 0.15
+    rejection_wick_body_ratio: float = 1.5
     pre_filter_limit: int = 50
     deep_analysis_limit: int = 20
     analysis_workers: int = 4
@@ -76,7 +80,7 @@ class Settings:
 
 
 def _weights(read) -> dict[str, float]:
-    defaults = {"trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8, "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7, "bollinger": 5, "adx": 8, "market_structure": 7, "multi_timeframe": 10, "target_reachability": 5, "news": 0}
+    defaults = {"trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8, "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7, "bollinger": 5, "adx": 8, "market_structure": 7, "support_resistance": 16, "multi_timeframe": 10, "target_reachability": 5, "news": 0}
     return {name: float(read(f"WEIGHT_{name.upper()}", str(value))) for name, value in defaults.items()}
 
 
@@ -94,7 +98,7 @@ def load_settings() -> Settings:
         margin_mode=margin_mode, margin_per_trade_usdt=float(read("MARGIN_PER_TRADE_USDT", "10")), margin_percent=float(read("MARGIN_PERCENT", "100")), large_limit_offset_percent=float(read("LARGE_LIMIT_OFFSET_PERCENT", "0.25")), large_limit_expiry_minutes=int(read("LARGE_LIMIT_EXPIRY_MINUTES", "240")),
         large_trailing_enabled=_bool(read("LARGE_TRAILING_ENABLED", "false")), trailing_callback_percent=float(read("TRAILING_CALLBACK_PERCENT", "1")), trailing_activation_percent=float(read("TRAILING_ACTIVATION_PERCENT", "5")),
         min_score=float(read("MIN_SCORE", "70")), min_direction_gap=float(read("MIN_DIRECTION_GAP", "8")), min_24h_abs_change_percent=float(read("MIN_24H_ABS_CHANGE_PERCENT", "3")), min_short_term_move_percent=float(read("MIN_SHORT_TERM_MOVE_PERCENT", "0.25")),
-        min_quote_volume_usdt=float(read("MIN_QUOTE_VOLUME_USDT", "5000000")), min_relative_volume=float(read("MIN_RELATIVE_VOLUME", "1.1")), min_atr_percent=float(read("MIN_ATR_PERCENT", "0.15")), max_atr_percent=float(read("MAX_ATR_PERCENT", "5")), min_adx=float(read("MIN_ADX", "18")), max_spread_percent=float(read("MAX_SPREAD_PERCENT", "0.12")), breakout_lookback=int(read("BREAKOUT_LOOKBACK", "20")),
+        min_quote_volume_usdt=float(read("MIN_QUOTE_VOLUME_USDT", "5000000")), min_relative_volume=float(read("MIN_RELATIVE_VOLUME", "1.1")), min_atr_percent=float(read("MIN_ATR_PERCENT", "0.15")), max_atr_percent=float(read("MAX_ATR_PERCENT", "5")), min_adx=float(read("MIN_ADX", "18")), max_spread_percent=float(read("MAX_SPREAD_PERCENT", "0.12")), breakout_lookback=int(read("BREAKOUT_LOOKBACK", "20")), support_resistance_lookback=int(read("SUPPORT_RESISTANCE_LOOKBACK", "48")), support_resistance_zone_atr=float(read("SUPPORT_RESISTANCE_ZONE_ATR", "0.75")), breakout_confirm_atr=float(read("BREAKOUT_CONFIRM_ATR", "0.15")), rejection_wick_body_ratio=float(read("REJECTION_WICK_BODY_RATIO", "1.5")),
         pre_filter_limit=int(read("PRE_FILTER_LIMIT", "50")), deep_analysis_limit=int(read("DEEP_ANALYSIS_LIMIT", "20")), analysis_workers=int(read("ANALYSIS_WORKERS", "4")), cooldown_seconds=int(read("COOLDOWN_SECONDS", "300")), max_trades_per_day=int(read("MAX_TRADES_PER_DAY", "5")), backtest_lookback_bars=int(read("BACKTEST_LOOKBACK_BARS", "1000")), backtest_horizon_bars=int(read("BACKTEST_HORIZON_BARS", "72")), backtest_signal_step=int(read("BACKTEST_SIGNAL_STEP", "12")), metadata_cache_seconds=int(read("METADATA_CACHE_SECONDS", "3600")),
         news_enabled=_bool(read("NEWS_ENABLED", "false")), news_api_url=read("NEWS_API_URL", "https://cryptocurrency.cv/api/news"), news_api_key=read("NEWS_API_KEY"), news_max_bonus=float(read("NEWS_MAX_BONUS", "8")), enable_live_trading=_bool(read("ENABLE_LIVE_TRADING", "false")), weights=_weights(read),
     )
@@ -109,6 +113,8 @@ def _validate(settings: Settings) -> None:
     if settings.leverage_fallback not in {"USE_MAX", "SKIP"}: raise ValueError("LEVERAGE_FALLBACK must be USE_MAX or SKIP")
     if settings.scan_interval_seconds < 30: raise ValueError("SCAN_INTERVAL_SECONDS must be at least 30")
     if not 1 <= settings.analysis_workers <= 10: raise ValueError("ANALYSIS_WORKERS must be between 1 and 10")
+    if settings.support_resistance_lookback < 10: raise ValueError("SUPPORT_RESISTANCE_LOOKBACK must be at least 10")
+    if settings.support_resistance_zone_atr <= 0 or settings.breakout_confirm_atr < 0 or settings.rejection_wick_body_ratio <= 0: raise ValueError("Support/resistance settings must be positive")
     if not 0 < settings.margin_percent <= 100: raise ValueError("MARGIN_PERCENT must be in (0, 100]")
     if settings.target_mode == "SMALL" and not 0.5 <= settings.target_percent <= 5: raise ValueError("SMALL TARGET_PERCENT must be between 0.5 and 5")
     if settings.target_mode == "LARGE" and settings.target_percent < 20: raise ValueError("LARGE TARGET_PERCENT must be at least 20")

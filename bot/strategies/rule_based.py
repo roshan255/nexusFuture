@@ -24,11 +24,32 @@ class RuleBasedStrategy(Strategy):
     def _technical_extras(self, frames: dict, price: float, symbol: str) -> tuple[dict, list[str]]:
         five_minute = frames["5m"]
         latest = five_minute.iloc[-1]
-        lookback = five_minute.iloc[-(self.settings.breakout_lookback + 1):-1]
-        prior_high = float(lookback.high.max())
-        prior_low = float(lookback.low.min())
-        range_width = max(prior_high - prior_low, price * 0.000001)
-        structure_long = max(0.0, min(100.0, (price - prior_low) / range_width * 100))
+        lookback = five_minute.iloc[-(self.settings.support_resistance_lookback + 1):-1]
+        resistance = float(lookback.high.max())
+        support = float(lookback.low.min())
+        current_atr = max(float(latest.atr), price * 0.000001)
+        zone = current_atr * self.settings.support_resistance_zone_atr
+        breakout_buffer = current_atr * self.settings.breakout_confirm_atr
+        body = max(abs(float(latest.close) - float(latest.open)), price * 0.000001)
+        upper_wick = float(latest.high) - max(float(latest.open), float(latest.close))
+        lower_wick = min(float(latest.open), float(latest.close)) - float(latest.low)
+        bearish_rejection = upper_wick / body >= self.settings.rejection_wick_body_ratio and latest.close <= latest.open
+        bullish_rejection = lower_wick / body >= self.settings.rejection_wick_body_ratio and latest.close >= latest.open
+
+        # A level is not a reason to chase.  A close beyond it by an ATR buffer is a
+        # confirmed breakout; near a level, a wick rejection favours the rebound side.
+        if price > resistance + breakout_buffer:
+            structure_long, support_resistance_long, support_resistance_short, level_reason = 90, 90, 10, "breakout_above_resistance"
+        elif price < support - breakout_buffer:
+            structure_long, support_resistance_long, support_resistance_short, level_reason = 10, 10, 90, "breakdown_below_support"
+        elif price >= resistance - zone:
+            structure_long, support_resistance_long, support_resistance_short = 35, (0 if bearish_rejection else 15), (100 if bearish_rejection else 70)
+            level_reason = "bearish_rejection_resistance" if bearish_rejection else "near_resistance"
+        elif price <= support + zone:
+            structure_long, support_resistance_long, support_resistance_short = 65, (100 if bullish_rejection else 70), (0 if bullish_rejection else 15)
+            level_reason = "bullish_rejection_support" if bullish_rejection else "near_support"
+        else:
+            structure_long, support_resistance_long, support_resistance_short, level_reason = 50, 50, 50, "between_levels"
         bullish_frames = sum(frame.iloc[-1].ema9 > frame.iloc[-1].ema21 for frame in frames.values())
         multi_timeframe_long = 100 * bullish_frames / len(frames)
         atr_percent = float(latest.atr) / price * 100
@@ -36,10 +57,10 @@ class RuleBasedStrategy(Strategy):
         target_quality = max(0.0, 100 - max(0.0, target_atr - 4.0) * 18)
         news_bonus, news_reasons = self.news.score(symbol)
         extras = {
-            "long": {"market_structure": structure_long, "multi_timeframe": multi_timeframe_long, "target_reachability": target_quality, "news": 50 + news_bonus},
-            "short": {"market_structure": 100 - structure_long, "multi_timeframe": 100 - multi_timeframe_long, "target_reachability": target_quality, "news": 50 - news_bonus},
+            "long": {"market_structure": structure_long, "support_resistance": support_resistance_long, "multi_timeframe": multi_timeframe_long, "target_reachability": target_quality, "news": 50 + news_bonus},
+            "short": {"market_structure": 100 - structure_long, "support_resistance": support_resistance_short, "multi_timeframe": 100 - multi_timeframe_long, "target_reachability": target_quality, "news": 50 - news_bonus},
         }
-        diagnostics = [f"mtf={bullish_frames}/{len(frames)}", f"target={target_atr:.1f}ATR"] + news_reasons
+        diagnostics = [f"level={level_reason}", f"support={support:.8g}", f"resistance={resistance:.8g}", f"mtf={bullish_frames}/{len(frames)}", f"target={target_atr:.1f}ATR"] + news_reasons
         return extras, diagnostics
 
     def _analyse_symbol(self, ticker):
