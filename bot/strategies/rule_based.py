@@ -21,6 +21,10 @@ class RuleBasedStrategy(Strategy):
         self.news = NewsSignalService(settings)
         self.log = logging.getLogger("futures_bot")
 
+    @staticmethod
+    def _is_opposing_level_chase(direction: str, level_reason: str) -> bool:
+        return (direction == "LONG" and level_reason in {"near_resistance", "bearish_rejection_resistance", "breakout_above_resistance"}) or (direction == "SHORT" and level_reason in {"near_support", "bullish_rejection_support", "breakdown_below_support"})
+
     def _technical_extras(self, frames: dict, price: float, symbol: str) -> tuple[dict, list[str]]:
         five_minute = frames["5m"]
         latest = five_minute.iloc[-1]
@@ -55,10 +59,24 @@ class RuleBasedStrategy(Strategy):
         atr_percent = float(latest.atr) / price * 100
         target_atr = self.settings.target_percent / max(atr_percent, 0.0001)
         target_quality = max(0.0, 100 - max(0.0, target_atr - 4.0) * 18)
+        long_target = price * (1 + self.settings.target_percent / 100)
+        short_target = price * (1 - self.settings.target_percent / 100)
+        long_stop = price * (1 - self.settings.stop_loss_percent / 100)
+        short_stop = price * (1 + self.settings.stop_loss_percent / 100)
+        # A recent level between entry and target is an obstacle.  A level between
+        # entry and stop is a potential buffer against the adverse move.
+        long_target_path = 10 if price < resistance < long_target else 90
+        short_target_path = 10 if short_target < support < price else 90
+        long_adverse_path = 90 if long_stop < support < price else 45
+        short_adverse_path = 90 if price < resistance < short_stop else 45
+        move_in_atr = float(latest.return_5) * 100 / max(atr_percent, 0.0001)
+        volume_boost = min(20.0, max(0.0, (float(latest.volume_ratio) - 1) * 25))
+        long_target_speed = max(0.0, min(100.0, 50 + move_in_atr * 35 + volume_boost))
+        short_target_speed = max(0.0, min(100.0, 50 - move_in_atr * 35 + volume_boost))
         news_bonus, news_reasons = self.news.score(symbol)
         extras = {
-            "long": {"market_structure": structure_long, "support_resistance": support_resistance_long, "multi_timeframe": multi_timeframe_long, "target_reachability": target_quality, "news": 50 + news_bonus},
-            "short": {"market_structure": 100 - structure_long, "support_resistance": support_resistance_short, "multi_timeframe": 100 - multi_timeframe_long, "target_reachability": target_quality, "news": 50 - news_bonus},
+            "long": {"market_structure": structure_long, "support_resistance": support_resistance_long, "target_speed": long_target_speed, "target_path": long_target_path, "adverse_path": long_adverse_path, "multi_timeframe": multi_timeframe_long, "target_reachability": target_quality, "news": 50 + news_bonus},
+            "short": {"market_structure": 100 - structure_long, "support_resistance": support_resistance_short, "target_speed": short_target_speed, "target_path": short_target_path, "adverse_path": short_adverse_path, "multi_timeframe": 100 - multi_timeframe_long, "target_reachability": target_quality, "news": 50 - news_bonus},
         }
         diagnostics = [f"level={level_reason}", f"support={support:.8g}", f"resistance={resistance:.8g}", f"mtf={bullish_frames}/{len(frames)}", f"target={target_atr:.1f}ATR"] + news_reasons
         return extras, diagnostics
@@ -91,7 +109,23 @@ class RuleBasedStrategy(Strategy):
         taker_rows = self.client.taker_volume(symbol)
         taker_ratio = float(taker_rows[-1]["buySellRatio"]) if taker_rows else 1.0
         extras, diagnostics = self._technical_extras(frames, price, symbol)
-        candidate = score(symbol, price, float(ticker["priceChangePercent"]), float(ticker["quoteVolume"]), latest, oi_change, funding, taker_ratio, imbalance, spread_percent / 100, self.settings.weights, extras)
+        weights = dict(self.settings.weights)
+        if self.settings.target_mode != "SMALL":
+            for name in ("target_speed", "target_path", "adverse_path"):
+                weights[name] = 0
+        candidate = score(symbol, price, float(ticker["priceChangePercent"]), float(ticker["quoteVolume"]), latest, oi_change, funding, taker_ratio, imbalance, spread_percent / 100, weights, extras)
+        if self.settings.target_mode == "SMALL":
+            level_reason = next(reason.removeprefix("level=") for reason in diagnostics if reason.startswith("level="))
+            if self.settings.small_avoid_opposing_level_entries and self._is_opposing_level_chase(candidate.direction, level_reason):
+                self.log.debug("candidate_skipped symbol=%s detail=opposing_level_chase direction=%s level=%s", symbol, candidate.direction, level_reason)
+                return None
+            target_atr = self.settings.target_percent / max(atr_percent, 0.0001)
+            if target_atr > self.settings.small_target_max_atr:
+                self.log.debug("candidate_skipped symbol=%s detail=target_too_far target_atr=%.2f", symbol, target_atr)
+                return None
+            if candidate.breakdown["target_speed"] < self.settings.small_target_min_speed_score or candidate.breakdown["target_path"] < self.settings.small_target_min_path_score:
+                self.log.debug("candidate_skipped symbol=%s detail=target_first_gate speed=%.1f path=%.1f", symbol, candidate.breakdown["target_speed"], candidate.breakdown["target_path"])
+                return None
         candidate.reasons.extend(diagnostics)
         return candidate
 

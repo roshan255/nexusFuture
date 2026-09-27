@@ -27,3 +27,15 @@ def test_support_resistance_settings_are_loaded(monkeypatch):
     monkeypatch.setenv("SUPPORT_RESISTANCE_ZONE_ATR", "0.5")
     assert load_settings().support_resistance_lookback == 60
     assert load_settings().support_resistance_zone_atr == 0.5
+
+
+def test_small_target_first_settings_are_loaded(monkeypatch):
+    monkeypatch.setenv("SMALL_TARGET_MAX_ATR", "2.5")
+    monkeypatch.setenv("SMALL_TARGET_MIN_SPEED_SCORE", "70")
+    assert load_settings().small_target_max_atr == 2.5
+    assert load_settings().small_target_min_speed_score == 70
+
+
+def test_small_avoid_opposing_level_entries_defaults_to_true(monkeypatch):
+    monkeypatch.delenv("SMALL_AVOID_OPPOSING_LEVEL_ENTRIES", raising=False)
+    assert load_settings().small_avoid_opposing_level_entries is True

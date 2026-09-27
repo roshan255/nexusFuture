@@ -24,6 +24,10 @@ class Settings:
     target_mode: str = "SMALL"
     target_percent: float = 1.5
     stop_loss_percent: float = 1.0
+    small_target_max_atr: float = 3.0
+    small_target_min_speed_score: float = 65.0
+    small_target_min_path_score: float = 65.0
+    small_avoid_opposing_level_entries: bool = True
     leverage: int = 5
     leverage_fallback: str = "USE_MAX"
     margin_mode: str = "FIXED"
@@ -80,7 +84,7 @@ class Settings:
 
 
 def _weights(read) -> dict[str, float]:
-    defaults = {"trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8, "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7, "bollinger": 5, "adx": 8, "market_structure": 7, "support_resistance": 16, "multi_timeframe": 10, "target_reachability": 5, "news": 0}
+    defaults = {"trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8, "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7, "bollinger": 5, "adx": 8, "market_structure": 7, "support_resistance": 16, "target_speed": 14, "target_path": 18, "adverse_path": 12, "multi_timeframe": 10, "target_reachability": 5, "news": 0}
     return {name: float(read(f"WEIGHT_{name.upper()}", str(value))) for name, value in defaults.items()}
 
 
@@ -94,7 +98,7 @@ def load_settings() -> Settings:
     target = float(read("TARGET_PERCENT", read("TAKE_PROFIT_PERCENT", "1.5")))
     settings = Settings(
         mode=mode, api_key=read("BINANCE_API_KEY"), api_secret=read("BINANCE_API_SECRET"), uat_base_url=read("UAT_BASE_URL", "https://demo-fapi.binance.com"), log_level=read("LOG_LEVEL", "INFO").upper(),
-        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")), reverse_signal_direction=_bool(read("REVERSE_SIGNAL_DIRECTION", "false")), target_mode=target_mode, target_percent=target, stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")), leverage=int(read("LEVERAGE", "5")), leverage_fallback=fallback,
+        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")), reverse_signal_direction=_bool(read("REVERSE_SIGNAL_DIRECTION", "false")), target_mode=target_mode, target_percent=target, stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")), small_target_max_atr=float(read("SMALL_TARGET_MAX_ATR", "3")), small_target_min_speed_score=float(read("SMALL_TARGET_MIN_SPEED_SCORE", "65")), small_target_min_path_score=float(read("SMALL_TARGET_MIN_PATH_SCORE", "65")), small_avoid_opposing_level_entries=_bool(read("SMALL_AVOID_OPPOSING_LEVEL_ENTRIES", "true")), leverage=int(read("LEVERAGE", "5")), leverage_fallback=fallback,
         margin_mode=margin_mode, margin_per_trade_usdt=float(read("MARGIN_PER_TRADE_USDT", "10")), margin_percent=float(read("MARGIN_PERCENT", "100")), large_limit_offset_percent=float(read("LARGE_LIMIT_OFFSET_PERCENT", "0.25")), large_limit_expiry_minutes=int(read("LARGE_LIMIT_EXPIRY_MINUTES", "240")),
         large_trailing_enabled=_bool(read("LARGE_TRAILING_ENABLED", "false")), trailing_callback_percent=float(read("TRAILING_CALLBACK_PERCENT", "1")), trailing_activation_percent=float(read("TRAILING_ACTIVATION_PERCENT", "5")),
         min_score=float(read("MIN_SCORE", "70")), min_direction_gap=float(read("MIN_DIRECTION_GAP", "8")), min_24h_abs_change_percent=float(read("MIN_24H_ABS_CHANGE_PERCENT", "3")), min_short_term_move_percent=float(read("MIN_SHORT_TERM_MOVE_PERCENT", "0.25")),
@@ -118,6 +122,7 @@ def _validate(settings: Settings) -> None:
     if not 0 < settings.margin_percent <= 100: raise ValueError("MARGIN_PERCENT must be in (0, 100]")
     if settings.target_mode == "SMALL" and not 0.5 <= settings.target_percent <= 5: raise ValueError("SMALL TARGET_PERCENT must be between 0.5 and 5")
     if settings.target_mode == "LARGE" and settings.target_percent < 20: raise ValueError("LARGE TARGET_PERCENT must be at least 20")
+    if settings.small_target_max_atr <= 0 or not 0 <= settings.small_target_min_speed_score <= 100 or not 0 <= settings.small_target_min_path_score <= 100: raise ValueError("SMALL target-first settings must be valid scores and ATR values")
     if not 0.1 <= settings.trailing_callback_percent <= 10: raise ValueError("TRAILING_CALLBACK_PERCENT must be between 0.1 and 10")
 
 

@@ -25,6 +25,18 @@ Run `python -m bot.main --backtest-symbol BTCUSDT` before trusting a configurati
 
 `TARGET_MODE=SMALL` accepts targets from 0.5% to 5% and submits a market entry, then verifies position state and places TP/SL. `TARGET_MODE=LARGE` requires a target of at least 20%, places one GTD limit entry, and waits for it rather than stacking entries. Enable `LARGE_TRAILING_ENABLED=true` to add a trailing stop after the entry is confirmed.
 
+#### SMALL target-first selection
+
+In SMALL mode, the scanner is deliberately stricter than a generic momentum scanner. It does not claim to predict a guaranteed outcome; it ranks candidates most likely to reach the configured TP before the configured SL. It requires all of the following before a candidate is eligible:
+
+- the target is no farther than `SMALL_TARGET_MAX_ATR` 5-minute ATRs away;
+- directional momentum and relative-volume acceleration meet `SMALL_TARGET_MIN_SPEED_SCORE`;
+- there is no recent support/resistance obstacle between entry and the target, measured by `SMALL_TARGET_MIN_PATH_SCORE`;
+- when `SMALL_AVOID_OPPOSING_LEVEL_ENTRIES=true`, a LONG at/above recent resistance and a SHORT at/below recent support are rejected, including breakout-chasing entries;
+- the normal liquidity, spread, trend, order-book, and support/resistance gates also pass.
+
+These target-first gates and the `WEIGHT_TARGET_SPEED`, `WEIGHT_TARGET_PATH`, and `WEIGHT_ADVERSE_PATH` weights apply only to `TARGET_MODE=SMALL`. LARGE mode retains its existing limit-entry behaviour.
+
 ### Configuration
 
 Copy `.env.example` to `.env` and tune the documented groups there: target/stop and mode; leverage/sizing; liquidity, volatility and signal thresholds; cooldown and daily-entry caps; target-first backtest window; optional news modifier; and per-signal weights. Set any `WEIGHT_*` value to `0` to disable that signal.
@@ -49,6 +61,10 @@ Set `REVERSE_SIGNAL_DIRECTION=true` only to reverse an actionable decision (`LON
 | `TARGET_MODE` | `SMALL` uses market entry; `LARGE` uses one limit entry. |
 | `TARGET_PERCENT` | Take-profit distance from entry. SMALL permits 0.5–5%; LARGE requires 20% or more. |
 | `STOP_LOSS_PERCENT` | Stop distance from entry. |
+| `SMALL_TARGET_MAX_ATR` | SMALL-only: maximum TP distance in 5-minute ATRs. Lower means only faster/volatile-enough candidates qualify. |
+| `SMALL_TARGET_MIN_SPEED_SCORE` | SMALL-only: minimum directional momentum/volume acceleration score, 0–100. Higher means fewer, faster impulses. |
+| `SMALL_TARGET_MIN_PATH_SCORE` | SMALL-only: minimum room-to-target score. A recent opposing level between entry and TP scores poorly. |
+| `SMALL_AVOID_OPPOSING_LEVEL_ENTRIES` | SMALL-only: when `true`, rejects LONGs into/above resistance and SHORTs into/below support rather than chasing a breakout. |
 | `LARGE_LIMIT_OFFSET_PERCENT` | Limit price offset from the current price in LARGE mode. |
 | `LARGE_LIMIT_EXPIRY_MINUTES` | How long a LARGE GTD entry may remain open. |
 | `LARGE_TRAILING_ENABLED` | Adds a trailing stop after a confirmed LARGE entry. |
@@ -85,7 +101,7 @@ Set `REVERSE_SIGNAL_DIRECTION=true` only to reverse an actionable decision (`LON
 | `NEWS_ENABLED` | Enables the optional news score modifier; it never independently starts a trade. |
 | `NEWS_API_URL`, `NEWS_API_KEY` | Endpoint and optional credential for the news feed. |
 | `NEWS_MAX_BONUS` | Largest directional score adjustment news can contribute. |
-| `WEIGHT_*` | Relative importance for a signal. `0` disables it. `WEIGHT_SUPPORT_RESISTANCE` controls the new level/rebound signal. |
+| `WEIGHT_*` | Relative importance for a signal. `0` disables it. `WEIGHT_SUPPORT_RESISTANCE` controls level/rebound logic; `WEIGHT_TARGET_SPEED`, `WEIGHT_TARGET_PATH`, and `WEIGHT_ADVERSE_PATH` control the SMALL target-first layer. |
 
 ### Support, resistance, and rebound handling
 
