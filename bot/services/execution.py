@@ -38,7 +38,8 @@ class TradeExecutor:
         offset = self.settings.large_limit_offset_percent / 100
         raw_price = candidate.price * (1 - offset if candidate.direction == "LONG" else 1 + offset)
         limit_price = floor_to(raw_price, rules.tick_size)
-        expiry = int(time.time() * 1000) + max(601, self.settings.large_limit_expiry_minutes * 60) * 1000
+        now_ms = int(time.time() * 1000) + getattr(self.client, "time_offset_ms", 0)
+        expiry = now_ms + max(601, self.settings.large_limit_expiry_minutes * 60) * 1000
         order = self.client.limit_order(candidate.symbol, entry_side, quantity, limit_price, f"large-entry-{int(time.time() * 1000)}", expiry)
         return {"mode": "LARGE", "leverage": leverage, "quantity": quantity, "limit_price": limit_price, "order_id": order.get("orderId"), "status": order.get("status", "NEW")}
 
@@ -61,8 +62,13 @@ class TradeExecutor:
                 expected.add(str(trail["algoId"]))
             found = {str(order["algoId"]) for order in self.client.open_algo_orders(position.symbol)}
             if not expected <= found:
+                current_pos = self.positions.current_position()
+                if not current_pos or current_pos.symbol != position.symbol:
+                    return protection
                 raise RuntimeError("Binance did not confirm all protection orders")
             return protection
         except Exception:
-            self.client.reduce_only_market_order(position.symbol, exit_side, abs(position.quantity), f"failsafe-{int(time.time() * 1000)}")
+            current_pos = self.positions.current_position()
+            if current_pos and current_pos.symbol == position.symbol and abs(current_pos.quantity) > 0:
+                self.client.reduce_only_market_order(position.symbol, exit_side, abs(current_pos.quantity), f"failsafe-{int(time.time() * 1000)}")
             raise

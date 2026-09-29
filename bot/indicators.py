@@ -42,6 +42,17 @@ def adx(frame: pd.DataFrame, period: int = 14) -> tuple[pd.Series, pd.Series, pd
 
 def vwap(frame: pd.DataFrame) -> pd.Series:
     typical_price = (frame.high + frame.low + frame.close) / 3
+    if "time" in frame.columns:
+        try:
+            dates = pd.to_datetime(frame["time"], unit="ms", utc=True).dt.date
+            tp_vol = typical_price * frame.volume
+            cum_tp_vol = tp_vol.groupby(dates).cumsum()
+            cum_vol = frame.volume.groupby(dates).cumsum().replace(0, np.nan)
+            result = cum_tp_vol / cum_vol
+            if not result.isna().all():
+                return result
+        except Exception:
+            pass
     return (typical_price * frame.volume).cumsum() / frame.volume.cumsum().replace(0, np.nan)
 def enrich(frame: pd.DataFrame) -> pd.DataFrame:
     x=frame.copy()

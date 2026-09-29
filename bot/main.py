@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from bot.api.binance import BinanceClient, BinanceError, BinanceRateLimitError
 from bot.backtest import compare_direction_bias
-from bot.config import configure_interactively, load_settings
+from bot.config import load_settings
 from bot.logger import get_logger
 from bot.market_data import MarketData
 from bot.risk_manager import LeverageUnavailable, TradeSizeError
@@ -17,7 +17,12 @@ from bot.strategies import RuleBasedStrategy
 
 
 def format_candidate(candidate) -> str:
-    return f"{candidate.symbol} {candidate.direction} score={candidate.score:.1f} L/S={candidate.breakdown['long_score']:.1f}/{candidate.breakdown['short_score']:.1f} reasons={', '.join(candidate.reasons)}"
+    eta = f" eta={candidate.tp_eta_bars:.1f}bars" if candidate.tp_eta_bars < 9999 else ""
+    return (
+        f"{candidate.symbol} {candidate.direction} score={candidate.score:.1f}"
+        f" L/S={candidate.breakdown['long_score']:.1f}/{candidate.breakdown['short_score']:.1f}"
+        f"{eta} reasons={', '.join(candidate.reasons)}"
+    )
 
 
 def run_backtest(settings, symbol: str) -> None:
@@ -94,13 +99,9 @@ def run_cycle(settings, scan_only: bool, limits: TradeLimitService) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scan-once", action="store_true", help="Scan and rank only; never submit an order.")
-    parser.add_argument("--configure", action="store_true", help="Prompt for minimal settings and write .env.")
     parser.add_argument("--check-connection", action="store_true", help="Read-only Binance credential and clock test.")
     parser.add_argument("--backtest-symbol", metavar="SYMBOL", help="Target-first technical direction comparison on 5m candles.")
     args = parser.parse_args()
-    if args.configure:
-        configure_interactively()
-        return
     settings = load_settings()
     log = get_logger(level=settings.log_level)
     if args.check_connection:

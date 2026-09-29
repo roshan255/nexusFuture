@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from getpass import getpass
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -28,6 +26,10 @@ class Settings:
     small_target_min_speed_score: float = 65.0
     small_target_min_path_score: float = 65.0
     small_avoid_opposing_level_entries: bool = True
+    small_max_rsi: float = 65.0
+    small_min_rsi: float = 35.0
+    small_min_clearance_percent: float = 1.65
+    small_max_ema_distance_atr: float = 2.0
     leverage: int = 5
     leverage_fallback: str = "USE_MAX"
     margin_mode: str = "FIXED"
@@ -84,7 +86,13 @@ class Settings:
 
 
 def _weights(read) -> dict[str, float]:
-    defaults = {"trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8, "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7, "bollinger": 5, "adx": 8, "market_structure": 7, "support_resistance": 16, "target_speed": 14, "target_path": 18, "adverse_path": 12, "multi_timeframe": 10, "target_reachability": 5, "news": 0}
+    defaults = {
+        "trend": 14, "momentum": 10, "volume": 9, "open_interest": 8, "taker": 8,
+        "orderbook": 7, "funding": 4, "macd": 8, "stoch_rsi": 5, "vwap": 7,
+        "bollinger": 5, "adx": 8, "market_structure": 7, "support_resistance": 16,
+        "target_speed": 14, "target_path": 18, "adverse_path": 12,
+        "multi_timeframe": 10, "target_reachability": 5, "news": 0,
+    }
     return {name: float(read(f"WEIGHT_{name.upper()}", str(value))) for name, value in defaults.items()}
 
 
@@ -97,44 +105,101 @@ def load_settings() -> Settings:
     fallback = read("LEVERAGE_FALLBACK", "USE_MAX").upper()
     target = float(read("TARGET_PERCENT", read("TAKE_PROFIT_PERCENT", "1.5")))
     settings = Settings(
-        mode=mode, api_key=read("BINANCE_API_KEY"), api_secret=read("BINANCE_API_SECRET"), uat_base_url=read("UAT_BASE_URL", "https://demo-fapi.binance.com"), log_level=read("LOG_LEVEL", "INFO").upper(),
-        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")), reverse_signal_direction=_bool(read("REVERSE_SIGNAL_DIRECTION", "false")), target_mode=target_mode, target_percent=target, stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")), small_target_max_atr=float(read("SMALL_TARGET_MAX_ATR", "3")), small_target_min_speed_score=float(read("SMALL_TARGET_MIN_SPEED_SCORE", "65")), small_target_min_path_score=float(read("SMALL_TARGET_MIN_PATH_SCORE", "65")), small_avoid_opposing_level_entries=_bool(read("SMALL_AVOID_OPPOSING_LEVEL_ENTRIES", "true")), leverage=int(read("LEVERAGE", "5")), leverage_fallback=fallback,
-        margin_mode=margin_mode, margin_per_trade_usdt=float(read("MARGIN_PER_TRADE_USDT", "10")), margin_percent=float(read("MARGIN_PERCENT", "100")), large_limit_offset_percent=float(read("LARGE_LIMIT_OFFSET_PERCENT", "0.25")), large_limit_expiry_minutes=int(read("LARGE_LIMIT_EXPIRY_MINUTES", "240")),
-        large_trailing_enabled=_bool(read("LARGE_TRAILING_ENABLED", "false")), trailing_callback_percent=float(read("TRAILING_CALLBACK_PERCENT", "1")), trailing_activation_percent=float(read("TRAILING_ACTIVATION_PERCENT", "5")),
-        min_score=float(read("MIN_SCORE", "70")), min_direction_gap=float(read("MIN_DIRECTION_GAP", "8")), min_24h_abs_change_percent=float(read("MIN_24H_ABS_CHANGE_PERCENT", "3")), min_short_term_move_percent=float(read("MIN_SHORT_TERM_MOVE_PERCENT", "0.25")),
-        min_quote_volume_usdt=float(read("MIN_QUOTE_VOLUME_USDT", "5000000")), min_relative_volume=float(read("MIN_RELATIVE_VOLUME", "1.1")), min_atr_percent=float(read("MIN_ATR_PERCENT", "0.15")), max_atr_percent=float(read("MAX_ATR_PERCENT", "5")), min_adx=float(read("MIN_ADX", "18")), max_spread_percent=float(read("MAX_SPREAD_PERCENT", "0.12")), breakout_lookback=int(read("BREAKOUT_LOOKBACK", "20")), support_resistance_lookback=int(read("SUPPORT_RESISTANCE_LOOKBACK", "48")), support_resistance_zone_atr=float(read("SUPPORT_RESISTANCE_ZONE_ATR", "0.75")), breakout_confirm_atr=float(read("BREAKOUT_CONFIRM_ATR", "0.15")), rejection_wick_body_ratio=float(read("REJECTION_WICK_BODY_RATIO", "1.5")),
-        pre_filter_limit=int(read("PRE_FILTER_LIMIT", "50")), deep_analysis_limit=int(read("DEEP_ANALYSIS_LIMIT", "20")), analysis_workers=int(read("ANALYSIS_WORKERS", "4")), cooldown_seconds=int(read("COOLDOWN_SECONDS", "300")), max_trades_per_day=int(read("MAX_TRADES_PER_DAY", "5")), backtest_lookback_bars=int(read("BACKTEST_LOOKBACK_BARS", "1000")), backtest_horizon_bars=int(read("BACKTEST_HORIZON_BARS", "72")), backtest_signal_step=int(read("BACKTEST_SIGNAL_STEP", "12")), metadata_cache_seconds=int(read("METADATA_CACHE_SECONDS", "3600")),
-        news_enabled=_bool(read("NEWS_ENABLED", "false")), news_api_url=read("NEWS_API_URL", "https://cryptocurrency.cv/api/news"), news_api_key=read("NEWS_API_KEY"), news_max_bonus=float(read("NEWS_MAX_BONUS", "8")), enable_live_trading=_bool(read("ENABLE_LIVE_TRADING", "false")), weights=_weights(read),
+        mode=mode,
+        api_key=read("BINANCE_API_KEY"),
+        api_secret=read("BINANCE_API_SECRET"),
+        uat_base_url=read("UAT_BASE_URL", "https://demo-fapi.binance.com"),
+        log_level=read("LOG_LEVEL", "INFO").upper(),
+        scan_interval_seconds=int(read("SCAN_INTERVAL_SECONDS", "60")),
+        reverse_signal_direction=_bool(read("REVERSE_SIGNAL_DIRECTION", "false")),
+        target_mode=target_mode,
+        target_percent=target,
+        stop_loss_percent=float(read("STOP_LOSS_PERCENT", "1")),
+        small_target_max_atr=float(read("SMALL_TARGET_MAX_ATR", "3")),
+        small_target_min_speed_score=float(read("SMALL_TARGET_MIN_SPEED_SCORE", "65")),
+        small_target_min_path_score=float(read("SMALL_TARGET_MIN_PATH_SCORE", "65")),
+        small_avoid_opposing_level_entries=_bool(read("SMALL_AVOID_OPPOSING_LEVEL_ENTRIES", "true")),
+        small_max_rsi=float(read("SMALL_MAX_RSI", "65")),
+        small_min_rsi=float(read("SMALL_MIN_RSI", "35")),
+        small_min_clearance_percent=float(read("SMALL_MIN_CLEARANCE_PERCENT", "1.65")),
+        small_max_ema_distance_atr=float(read("SMALL_MAX_EMA_DISTANCE_ATR", "2.0")),
+        leverage=int(read("LEVERAGE", "5")),
+        leverage_fallback=fallback,
+        margin_mode=margin_mode,
+        margin_per_trade_usdt=float(read("MARGIN_PER_TRADE_USDT", "10")),
+        margin_percent=float(read("MARGIN_PERCENT", "100")),
+        large_limit_offset_percent=float(read("LARGE_LIMIT_OFFSET_PERCENT", "0.25")),
+        large_limit_expiry_minutes=int(read("LARGE_LIMIT_EXPIRY_MINUTES", "240")),
+        large_trailing_enabled=_bool(read("LARGE_TRAILING_ENABLED", "false")),
+        trailing_callback_percent=float(read("TRAILING_CALLBACK_PERCENT", "1")),
+        trailing_activation_percent=float(read("TRAILING_ACTIVATION_PERCENT", "5")),
+        min_score=float(read("MIN_SCORE", "70")),
+        min_direction_gap=float(read("MIN_DIRECTION_GAP", "8")),
+        min_24h_abs_change_percent=float(read("MIN_24H_ABS_CHANGE_PERCENT", "3")),
+        min_short_term_move_percent=float(read("MIN_SHORT_TERM_MOVE_PERCENT", "0.25")),
+        min_quote_volume_usdt=float(read("MIN_QUOTE_VOLUME_USDT", "5000000")),
+        min_relative_volume=float(read("MIN_RELATIVE_VOLUME", "1.1")),
+        min_atr_percent=float(read("MIN_ATR_PERCENT", "0.15")),
+        max_atr_percent=float(read("MAX_ATR_PERCENT", "5")),
+        min_adx=float(read("MIN_ADX", "18")),
+        max_spread_percent=float(read("MAX_SPREAD_PERCENT", "0.12")),
+        breakout_lookback=int(read("BREAKOUT_LOOKBACK", "20")),
+        support_resistance_lookback=int(read("SUPPORT_RESISTANCE_LOOKBACK", "48")),
+        support_resistance_zone_atr=float(read("SUPPORT_RESISTANCE_ZONE_ATR", "0.75")),
+        breakout_confirm_atr=float(read("BREAKOUT_CONFIRM_ATR", "0.15")),
+        rejection_wick_body_ratio=float(read("REJECTION_WICK_BODY_RATIO", "1.5")),
+        pre_filter_limit=int(read("PRE_FILTER_LIMIT", "50")),
+        deep_analysis_limit=int(read("DEEP_ANALYSIS_LIMIT", "20")),
+        analysis_workers=int(read("ANALYSIS_WORKERS", "4")),
+        cooldown_seconds=int(read("COOLDOWN_SECONDS", "300")),
+        max_trades_per_day=int(read("MAX_TRADES_PER_DAY", "5")),
+        backtest_lookback_bars=int(read("BACKTEST_LOOKBACK_BARS", "1000")),
+        backtest_horizon_bars=int(read("BACKTEST_HORIZON_BARS", "72")),
+        backtest_signal_step=int(read("BACKTEST_SIGNAL_STEP", "12")),
+        metadata_cache_seconds=int(read("METADATA_CACHE_SECONDS", "3600")),
+        news_enabled=_bool(read("NEWS_ENABLED", "false")),
+        news_api_url=read("NEWS_API_URL", "https://cryptocurrency.cv/api/news"),
+        news_api_key=read("NEWS_API_KEY"),
+        news_max_bonus=float(read("NEWS_MAX_BONUS", "8")),
+        enable_live_trading=_bool(read("ENABLE_LIVE_TRADING", "false")),
+        weights=_weights(read),
     )
     _validate(settings)
     return settings
 
 
 def _validate(settings: Settings) -> None:
-    if settings.mode not in {"UAT", "PRODUCTION"}: raise ValueError("MODE must be UAT or PRODUCTION")
-    if settings.target_mode not in {"SMALL", "LARGE"}: raise ValueError("TARGET_MODE must be SMALL or LARGE")
-    if settings.margin_mode not in {"FIXED", "PERCENT"}: raise ValueError("MARGIN_MODE must be FIXED or PERCENT")
-    if settings.leverage_fallback not in {"USE_MAX", "SKIP"}: raise ValueError("LEVERAGE_FALLBACK must be USE_MAX or SKIP")
-    if settings.scan_interval_seconds < 30: raise ValueError("SCAN_INTERVAL_SECONDS must be at least 30")
-    if not 1 <= settings.analysis_workers <= 10: raise ValueError("ANALYSIS_WORKERS must be between 1 and 10")
-    if settings.support_resistance_lookback < 10: raise ValueError("SUPPORT_RESISTANCE_LOOKBACK must be at least 10")
-    if settings.support_resistance_zone_atr <= 0 or settings.breakout_confirm_atr < 0 or settings.rejection_wick_body_ratio <= 0: raise ValueError("Support/resistance settings must be positive")
-    if not 0 < settings.margin_percent <= 100: raise ValueError("MARGIN_PERCENT must be in (0, 100]")
-    if settings.target_mode == "SMALL" and not 0.5 <= settings.target_percent <= 5: raise ValueError("SMALL TARGET_PERCENT must be between 0.5 and 5")
-    if settings.target_mode == "LARGE" and settings.target_percent < 20: raise ValueError("LARGE TARGET_PERCENT must be at least 20")
-    if settings.small_target_max_atr <= 0 or not 0 <= settings.small_target_min_speed_score <= 100 or not 0 <= settings.small_target_min_path_score <= 100: raise ValueError("SMALL target-first settings must be valid scores and ATR values")
-    if not 0.1 <= settings.trailing_callback_percent <= 10: raise ValueError("TRAILING_CALLBACK_PERCENT must be between 0.1 and 10")
-
-
-def configure_interactively(path: str = ".env") -> None:
-    mode = input("Mode [UAT/PRODUCTION] (UAT): ").strip().upper() or "UAT"
-    api_key = input("Binance Futures API key: ").strip()
-    api_secret = getpass("Binance Futures API secret: ").strip()
-    target_mode = input("Target mode [SMALL/LARGE] (SMALL): ").strip().upper() or "SMALL"
-    target = input("Target percent (1.5): ").strip() or "1.5"
-    stop = input("Stop-loss percent (1): ").strip() or "1"
-    leverage = input("Leverage (5): ").strip() or "5"
-    interval = input("Scan interval seconds (60): ").strip() or "60"
-    live = "false"
-    if mode == "PRODUCTION": live = "true" if input("Enable REAL live trading? Type YES: ").strip() == "YES" else "false"
-    Path(path).write_text(f"MODE={mode}\nBINANCE_API_KEY={api_key}\nBINANCE_API_SECRET={api_secret}\nTARGET_MODE={target_mode}\nTARGET_PERCENT={target}\nSTOP_LOSS_PERCENT={stop}\nLEVERAGE={leverage}\nSCAN_INTERVAL_SECONDS={interval}\nENABLE_LIVE_TRADING={live}\n", encoding="utf-8")
+    if settings.mode not in {"UAT", "PRODUCTION"}:
+        raise ValueError("MODE must be UAT or PRODUCTION")
+    if settings.target_mode not in {"SMALL", "LARGE"}:
+        raise ValueError("TARGET_MODE must be SMALL or LARGE")
+    if settings.margin_mode not in {"FIXED", "PERCENT"}:
+        raise ValueError("MARGIN_MODE must be FIXED or PERCENT")
+    if settings.leverage_fallback not in {"USE_MAX", "SKIP"}:
+        raise ValueError("LEVERAGE_FALLBACK must be USE_MAX or SKIP")
+    if settings.scan_interval_seconds < 30:
+        raise ValueError("SCAN_INTERVAL_SECONDS must be at least 30")
+    if not 1 <= settings.analysis_workers <= 10:
+        raise ValueError("ANALYSIS_WORKERS must be between 1 and 10")
+    if settings.support_resistance_lookback < 10:
+        raise ValueError("SUPPORT_RESISTANCE_LOOKBACK must be at least 10")
+    if settings.support_resistance_zone_atr <= 0 or settings.breakout_confirm_atr < 0 or settings.rejection_wick_body_ratio <= 0:
+        raise ValueError("Support/resistance settings must be positive")
+    if not 0 < settings.margin_percent <= 100:
+        raise ValueError("MARGIN_PERCENT must be in (0, 100]")
+    if settings.target_mode == "SMALL" and not 0.5 <= settings.target_percent <= 5:
+        raise ValueError("SMALL TARGET_PERCENT must be between 0.5 and 5")
+    if settings.target_mode == "LARGE" and settings.target_percent < 20:
+        raise ValueError("LARGE TARGET_PERCENT must be at least 20")
+    if settings.small_target_max_atr <= 0 or not 0 <= settings.small_target_min_speed_score <= 100 or not 0 <= settings.small_target_min_path_score <= 100:
+        raise ValueError("SMALL target-first settings must be valid scores and ATR values")
+    if not (50 <= settings.small_max_rsi <= 90):
+        raise ValueError("SMALL_MAX_RSI must be between 50 and 90")
+    if not (10 <= settings.small_min_rsi <= 50):
+        raise ValueError("SMALL_MIN_RSI must be between 10 and 50")
+    if settings.small_min_clearance_percent < 0:
+        raise ValueError("SMALL_MIN_CLEARANCE_PERCENT must be non-negative")
+    if settings.small_max_ema_distance_atr <= 0:
+        raise ValueError("SMALL_MAX_EMA_DISTANCE_ATR must be positive")
+    if not 0.1 <= settings.trailing_callback_percent <= 10:
+        raise ValueError("TRAILING_CALLBACK_PERCENT must be between 0.1 and 10")

@@ -8,7 +8,6 @@ Rule-based, restart-safe USDⓈ-M Futures scanner. `--scan-once` never submits o
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m bot.main --configure
 python -m bot.main --scan-once
 pytest
 ```
@@ -27,13 +26,16 @@ Run `python -m bot.main --backtest-symbol BTCUSDT` before trusting a configurati
 
 #### SMALL target-first selection
 
-In SMALL mode, the scanner is deliberately stricter than a generic momentum scanner. It does not claim to predict a guaranteed outcome; it ranks candidates most likely to reach the configured TP before the configured SL. It requires all of the following before a candidate is eligible:
+In SMALL mode, the scanner is deliberately calibrated to reach a quick target (e.g. 1.5%) before a 1.0% stop. To maximize success rate and prevent buying at the top or shorting at the bottom where mean-reversion pullbacks occur, it requires all of the following:
 
-- the target is no farther than `SMALL_TARGET_MAX_ATR` 5-minute ATRs away;
+- the target is reachable within `SMALL_TARGET_MAX_ATR` 5-minute ATRs;
 - directional momentum and relative-volume acceleration meet `SMALL_TARGET_MIN_SPEED_SCORE`;
-- there is no recent support/resistance obstacle between entry and the target, measured by `SMALL_TARGET_MIN_PATH_SCORE`;
-- when `SMALL_AVOID_OPPOSING_LEVEL_ENTRIES=true`, a LONG at/above recent resistance and a SHORT at/below recent support are rejected, including breakout-chasing entries;
-- the normal liquidity, spread, trend, order-book, and support/resistance gates also pass.
+- there is no opposing support/resistance obstacle between entry and target, measured by `SMALL_TARGET_MIN_PATH_SCORE`;
+- **Anti-top buying / Anti-bottom selling**: when `SMALL_AVOID_OPPOSING_LEVEL_ENTRIES=true`, entries chasing breakouts at or above resistance for LONG (or below support for SHORT) are rejected;
+- **Runway clearance**: distance to the opposing barrier must be at least `SMALL_MIN_CLEARANCE_PERCENT` (e.g. 1.65%) so the 1.5% target has ample room to execute before hitting structural resistance;
+- **Overbought/oversold boundaries**: 5m RSI must not exceed `SMALL_MAX_RSI` (e.g. 65) for LONG or fall below `SMALL_MIN_RSI` (e.g. 35) for SHORT;
+- **Overextension check**: price must not be stretched beyond `SMALL_MAX_EMA_DISTANCE_ATR` ATRs away from the 5m EMA21 or pierced through outer Bollinger Bands;
+- liquidity, spread, trend, order-book imbalance, and multi-timeframe directional gates pass.
 
 These target-first gates and the `WEIGHT_TARGET_SPEED`, `WEIGHT_TARGET_PATH`, and `WEIGHT_ADVERSE_PATH` weights apply only to `TARGET_MODE=SMALL`. LARGE mode retains its existing limit-entry behaviour.
 
@@ -65,6 +67,10 @@ Set `REVERSE_SIGNAL_DIRECTION=true` only to reverse an actionable decision (`LON
 | `SMALL_TARGET_MIN_SPEED_SCORE` | SMALL-only: minimum directional momentum/volume acceleration score, 0–100. Higher means fewer, faster impulses. |
 | `SMALL_TARGET_MIN_PATH_SCORE` | SMALL-only: minimum room-to-target score. A recent opposing level between entry and TP scores poorly. |
 | `SMALL_AVOID_OPPOSING_LEVEL_ENTRIES` | SMALL-only: when `true`, rejects LONGs into/above resistance and SHORTs into/below support rather than chasing a breakout. |
+| `SMALL_MAX_RSI` | SMALL-only: maximum 5m RSI for LONG entry (default `65`) to avoid buying overbought tops. |
+| `SMALL_MIN_RSI` | SMALL-only: minimum 5m RSI for SHORT entry (default `35`) to avoid selling oversold bottoms. |
+| `SMALL_MIN_CLEARANCE_PERCENT` | SMALL-only: minimum distance in percent from entry to opposing resistance/support (default `1.65`). Ensures target completes before structural barriers. |
+| `SMALL_MAX_EMA_DISTANCE_ATR` | SMALL-only: maximum allowed distance from 5m EMA21 in ATR units (default `2.0`). Rejects overextended moves. |
 | `LARGE_LIMIT_OFFSET_PERCENT` | Limit price offset from the current price in LARGE mode. |
 | `LARGE_LIMIT_EXPIRY_MINUTES` | How long a LARGE GTD entry may remain open. |
 | `LARGE_TRAILING_ENABLED` | Adds a trailing stop after a confirmed LARGE entry. |
@@ -114,7 +120,7 @@ The strategy derives recent support and resistance from closed 5-minute highs/lo
 ## Structure
 
 - `bot/api/` — Binance HTTP requests, metadata cache, rate-limit handling, and time synchronization.
-- `bot/services/` — position reconciliation, protected execution, news modifier, and trade limits.
+- `bot/services/` — position reconciliation, protected execution, news modifier, and persistent restart-safe trade limits.
 - `bot/strategies/` — trading algorithms. Add a new strategy by implementing `Strategy.analyse()`; execution and risk controls do not need changes.
 - `bot/backtest.py` — target-first historical direction and inverse-bias comparison.
 - `bot/indicators.py`, `bot/scorer.py`, `bot/risk_manager.py` — reusable strategy and risk primitives.

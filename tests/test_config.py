@@ -1,4 +1,3 @@
-
 import pytest
 
 from bot.config import load_settings
@@ -39,3 +38,15 @@ def test_small_target_first_settings_are_loaded(monkeypatch):
 def test_small_avoid_opposing_level_entries_defaults_to_true(monkeypatch):
     monkeypatch.delenv("SMALL_AVOID_OPPOSING_LEVEL_ENTRIES", raising=False)
     assert load_settings().small_avoid_opposing_level_entries is True
+
+
+def test_small_anti_top_and_clearance_settings(monkeypatch):
+    monkeypatch.setenv("SMALL_MAX_RSI", "62")
+    monkeypatch.setenv("SMALL_MIN_RSI", "38")
+    monkeypatch.setenv("SMALL_MIN_CLEARANCE_PERCENT", "2.0")
+    monkeypatch.setenv("SMALL_MAX_EMA_DISTANCE_ATR", "1.8")
+    settings = load_settings()
+    assert settings.small_max_rsi == 62.0
+    assert settings.small_min_rsi == 38.0
+    assert settings.small_min_clearance_percent == 2.0
+    assert settings.small_max_ema_distance_atr == 1.8
